@@ -12,10 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
+# main.py, requirements.txt live inside the api/ folder in this repo; index.html is at root.
+COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY api/ .
+COPY index.html .
 
 # Render sets $PORT itself; default to 10000 for local/manual runs.
 EXPOSE 10000
