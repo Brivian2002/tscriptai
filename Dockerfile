@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api/ .
 COPY index.html .
 
-# Render sets $PORT itself; default to 10000 for local/manual runs.
 EXPOSE 10000
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Render always injects a $PORT env var for web services — no fallback needed,
+# and using ${PORT:-default} syntax here trips up Render's own command pre-processing.
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port $PORT"]
