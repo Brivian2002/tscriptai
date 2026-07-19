@@ -109,6 +109,12 @@ class Settings:
     groq_transcription_model: str = os.getenv("GROQ_TRANSCRIPTION_MODEL", "whisper-large-v3-turbo").strip()
     google_api_key: str = os.getenv("GOOGLE_API_KEY", "").strip()
     google_maps_api_key: str = os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
+    # Google Identity Services client ID for "Sign in with Google". This is a PUBLIC value
+    # (safe to expose to the browser) — get it from Google Cloud Console > Credentials >
+    # OAuth 2.0 Client ID (Web application), then also enable the Google provider in the
+    # Supabase dashboard (Authentication > Providers) with the same Client ID so Supabase
+    # will accept the ID token we hand it.
+    google_oauth_client_id: str = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "").strip()
     max_upload_size_mb: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "200"))
     presence_ttl_seconds: int = int(os.getenv("PRESENCE_TTL_SECONDS", "120"))
     rate_limit_requests: int = int(os.getenv("RATE_LIMIT_REQUESTS", "30"))
@@ -1142,6 +1148,7 @@ def public_config() -> JSONResponse:
         "api_prefix": settings.api_prefix or "/",
         "frontend_url": settings.frontend_url,
         "google_maps_enabled": bool(settings.google_maps_api_key),
+        "google_oauth_client_id": settings.google_oauth_client_id,
     })
 
 
@@ -1203,6 +1210,46 @@ def auth_login(request: Request, response: Response, payload: Dict[str, Any] = B
     })
     response.set_cookie("tscript_session", session_id, **session_cookie_kwargs(request))
     return json_ok({"ok": True, "user": {"id": user.get("id"), "email": user.get("email") or email, "display_name": display_name or user.get("email") or email}}, response)
+
+
+@app.post(route("/auth/google"))
+def auth_google(request: Request, response: Response, payload: Dict[str, Any] = Body(...)) -> JSONResponse:
+    """Realtime "Sign in with Google" using Google Identity Services on the frontend.
+
+    The frontend collects a Google ID token via the GIS button/One Tap flow and posts it
+    here. We hand that token straight to Supabase's id_token grant, which verifies it against
+    the Google provider configured in the Supabase dashboard and returns a normal Supabase
+    session — from that point on this behaves exactly like email/password login (same cookie,
+    same session table).
+    """
+    enforce_rate_limit(request, "auth")
+    credential = str(payload.get("credential") or payload.get("id_token") or "").strip()
+    nonce = str(payload.get("nonce") or "").strip()
+    if not credential:
+        raise http_error(400, "Missing Google credential")
+    if not settings.google_oauth_client_id:
+        raise http_error(500, "Google sign-in is not configured (missing GOOGLE_OAUTH_CLIENT_ID)")
+    token_payload: Dict[str, Any] = {"provider": "google", "id_token": credential}
+    if nonce:
+        token_payload["nonce"] = nonce
+    data = supabase_auth_request("token", token_payload, "?grant_type=id_token")
+    user = data.get("user") or {}
+    metadata = user.get("user_metadata") or {}
+    display_name = (metadata.get("full_name") or metadata.get("name") or "").strip()
+    email = user.get("email") or ""
+    if user.get("id"):
+        upsert_user_profile(user["id"], email, display_name)
+        update_presence({"id": user["id"]}, "login", "online")
+    session_id = store_session({
+        "user_id": user.get("id"),
+        "email": email,
+        "display_name": display_name,
+        "access_token": data.get("access_token"),
+        "refresh_token": data.get("refresh_token"),
+        "expires_at": now_utc() + timedelta(seconds=int(data.get("expires_in") or 3600)),
+    })
+    response.set_cookie("tscript_session", session_id, **session_cookie_kwargs(request))
+    return json_ok({"ok": True, "user": {"id": user.get("id"), "email": email, "display_name": display_name or email}}, response)
 
 
 @app.post(route("/auth/logout"))
