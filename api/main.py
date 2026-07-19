@@ -1641,21 +1641,31 @@ def youtube_transcribe(request: Request, response: Response, payload: Dict[str, 
     video_id = extract_youtube_video_id(url)
     caption_result = fetch_youtube_captions(video_id, language_hint) if video_id else None
 
-    if caption_result is not None:
-        language, segments = caption_result
-        utterances = normalise_utterances(segments)
-        for idx, item in enumerate(utterances, start=1):
-            item["index"] = idx
-        meta = fetch_youtube_oembed_meta(url)
-        meta["video_id"] = video_id
-        meta["webpage_url"] = url
-        meta["duration"] = segments[-1]["end"] if segments else 0
-    else:
-        # No caption track available (or the lookup failed) — fall back to
-        # downloading audio and transcribing it with Whisper via Groq.
-        with tempfile.TemporaryDirectory() as tempdir:
-            audio_path, meta = download_youtube_audio(url, Path(tempdir))
-            language, utterances = build_transcript_from_file(audio_path, language_hint)
+    if caption_result is None:
+        # No caption track exists for this video. We intentionally do NOT fall
+        # back to downloading the audio and running it through yt-dlp here —
+        # YouTube blocks that path from server IPs (see download_youtube_audio),
+        # so attempting it just wastes time and produces a confusing error.
+        # Instead, tell the user clearly and point them at the upload flow,
+        # which transcribes the same way but sidesteps YouTube's server-side
+        # download restriction entirely.
+        raise http_error(
+            422,
+            "This video doesn't have captions available, so we can't pull a transcript "
+            "automatically. Download the video or audio yourself (e.g. from YouTube's "
+            "\"Download\" option if available, or a screen/audio recording) and upload it "
+            "using the Transcription workspace instead — it uses the same transcription "
+            "engine and editing tools.",
+        )
+
+    language, segments = caption_result
+    utterances = normalise_utterances(segments)
+    for idx, item in enumerate(utterances, start=1):
+        item["index"] = idx
+    meta = fetch_youtube_oembed_meta(url)
+    meta["video_id"] = video_id
+    meta["webpage_url"] = url
+    meta["duration"] = segments[-1]["end"] if segments else 0
 
     transcript_id = save_transcript(actor, meta.get("title") or "YouTube video", language, utterances, "")
     return json_ok({
@@ -1667,6 +1677,7 @@ def youtube_transcribe(request: Request, response: Response, payload: Dict[str, 
         "speakers": [{"speaker_label": "Speaker A", "speaker_name": "", "role_tag": "Unknown"}],
         "video": meta,
     }, response)
+
 
 
 @app.post(route("/transcript/enrich"))
