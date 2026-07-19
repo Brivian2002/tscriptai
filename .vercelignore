@@ -1,0 +1,46 @@
+# ============================================================
+#  EXCLUDE ALL PYTHON BACKEND FILES FROM VERCEL
+#  Vercel only serves the static index.html frontend.
+#  The Python backend runs on Render (see Dockerfile).
+# ============================================================
+main.py
+web_tools.py
+requirements.txt
+Dockerfile
+LIVE_VOICE_DOCUMENTATION.md
+Instruction.md
+Shift_SOP_Segmentation & Labeling.pdf
+Shift_SOP_Segmentation_Labeling.pdf
+
+# Python bytecode & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Data and runtime (never deploy databases)
+data/
+*.sqlite3
+*.db
+*.log
+
+# Development files
+.git/
+.gitignore
+.env
+.env.local
+.env.*.local
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
