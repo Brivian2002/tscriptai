@@ -762,37 +762,56 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
     if not is_youtube_url(url):
         raise http_error(400, "Please provide a valid YouTube video URL")
     out_template = str(dest_dir / "%(id)s.%(ext)s")
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": out_template,
-        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "socket_timeout": 30,
-        # Cloud/datacenter IPs (Render, AWS, etc.) are frequently challenged by YouTube's
-        # "sign in to confirm you're not a bot" check on the default web client. The
-        # android/ios embedded clients are challenged far less often, so try those first.
-        "extractor_args": {"youtube": {"player_client": ["android", "ios", "web"]}},
-        "http_headers": {"User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14) gzip"},
-    }
+    cookie_path = None
     if settings.youtube_cookies_content:
         cookie_path = dest_dir / "cookies.txt"
         cookie_path.write_text(settings.youtube_cookies_content, encoding="utf-8")
-        ydl_opts["cookiefile"] = str(cookie_path)
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-    except yt_dlp.utils.DownloadError as exc:
-        message = str(exc)
+
+    # YouTube periodically changes what each "player client" is allowed to see, and it
+    # isn't consistent per video. Try a few client/format combinations in order rather
+    # than betting everything on one; if a combo has no matching formats or gets
+    # bot-challenged, fall through to the next one instead of failing outright.
+    attempts = [
+        {"player_client": ["android", "ios"], "format": "bestaudio/best"},
+        {"player_client": ["ios"], "format": "bestaudio/best"},
+        {"player_client": ["web"], "format": "bestaudio/best"},
+        {"player_client": ["android", "ios", "web"], "format": "best"},
+    ]
+    last_error: Optional[Exception] = None
+    info = None
+    for attempt in attempts:
+        ydl_opts = {
+            "format": attempt["format"],
+            "outtmpl": out_template,
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "socket_timeout": 30,
+            "extractor_args": {"youtube": {"player_client": attempt["player_client"]}},
+            "http_headers": {"User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14) gzip"},
+        }
+        if cookie_path:
+            ydl_opts["cookiefile"] = str(cookie_path)
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+            last_error = None
+            break
+        except yt_dlp.utils.DownloadError as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None or info is None:
+        message = str(last_error) if last_error else "No usable audio stream was found for that video."
         if "sign in" in message.lower() or "not a bot" in message.lower():
             raise http_error(
                 400,
                 "YouTube is blocking this server's requests as a bot for that video. "
-                "Set the YOUTUBE_COOKIES environment variable (see env.txt) to fix this for all videos, "
+                "Set the YOUTUBE_COOKIES environment variable to fix this for all videos, "
                 "or try a different video in the meantime.",
             )
-        raise http_error(400, f"Could not download that YouTube video: {exc}")
+        raise http_error(400, f"Could not download that YouTube video: {message}")
     duration = float(info.get("duration") or 0)
     if duration and duration > settings.youtube_max_duration_seconds:
         raise http_error(400, f"Video is longer than the {settings.youtube_max_duration_seconds // 60}-minute limit for transcription")
