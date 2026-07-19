@@ -13,9 +13,8 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
-<!-- Auth removed. History/memory persistence works entirely through the anonymous,
-     persistent visitor cookie already issued by the backend (get_or_create_anon_user) —
-     no sign-in step required, so this can't silently break. -->
+<!-- Google Identity Services — powers the "Sign in with Google" button/One Tap flow. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1373,6 +1372,9 @@
 .auth-modal-tabs { display:flex; gap:8px; margin-bottom:16px; }
 .auth-tab-btn { flex:1; border:1px solid var(--border); background:var(--bg-primary); color:var(--text-main); border-radius:12px; padding:10px 12px; cursor:pointer; }
 .auth-tab-btn.active { background:linear-gradient(135deg,var(--accent-cyan),var(--accent-violet)); color:#081018; border-color:transparent; font-weight:700; }
+.settings-google-mount { display:flex; justify-content:center; min-height:40px; }
+.auth-modal-divider { display:flex; align-items:center; gap:10px; margin:14px 0; color:var(--text-muted); font-size:12px; }
+.auth-modal-divider::before, .auth-modal-divider::after { content:''; flex:1; height:1px; background:var(--border); }
 .auth-form { display:none; }
 .auth-form.active { display:block; }
 .auth-form .community-input { margin-top:0; margin-bottom:10px; }
@@ -2048,15 +2050,8 @@
 
           <div class="settings-grid-layout">
             <div class="community-card">
-              <h3>Profile</h3>
-              <label class="settings-label" for="settingsDisplayName">Display name</label>
-              <input id="settingsDisplayName" class="community-input" type="text" maxlength="120" placeholder="Your display name" />
-              <label class="settings-label" for="settingsEmail">Email</label>
-              <input id="settingsEmail" class="community-input" type="text" placeholder="Email" disabled />
-              <div class="community-actions-row">
-                <span class="community-helper">Theme preference is saved with your account.</span>
-                <button class="btn btn-primary" id="settingsSaveBtn" type="button">Save Profile</button>
-              </div>
+              <h3>Account</h3>
+              <div id="settingsGoogleBtnMount" class="settings-google-mount"></div>
               <div class="community-actions-row" style="margin-top:6px;">
                 <span class="community-helper">Done for now?</span>
                 <button class="btn btn-danger" id="settingsLogoutBtn" type="button">Sign Out</button>
@@ -2312,7 +2307,7 @@
   // Vercel, a CDN, a file:// preview, etc. — we must point at the Render API
   // explicitly, or every fetch() 404s against the frontend's own origin instead
   // of reaching the backend.
-  const BACKEND_ORIGIN = 'https://tscriptai.onrender.com';
+  const BACKEND_ORIGIN = 'https://tscriptai-1.onrender.com';
   function getStoredApiUrl() {
     try {
       return localStorage.getItem('tscript-api-url') || '';
@@ -5991,6 +5986,8 @@ async function performInlineTranslate(targetLang) {
       </div>
       <button class="auth-close" id="authModalCloseBtn" type="button">✕</button>
     </div>
+    <div id="authGoogleMount" class="settings-google-mount" style="margin-bottom:14px;"></div>
+    <div class="auth-modal-divider"><span>or use email</span></div>
     <div class="auth-modal-tabs">
       <button class="auth-tab-btn active" id="authTabLogin" type="button">Sign In</button>
       <button class="auth-tab-btn" id="authTabRegister" type="button">Register</button>
@@ -6174,31 +6171,77 @@ if (webSearchSelect) {
 }
 function renderSettingsState() {
   const authStateBox = document.getElementById('settingsAuthState');
-  const nameInput = document.getElementById('settingsDisplayName');
-  const emailInput = document.getElementById('settingsEmail');
-  if (!authStateBox || !nameInput || !emailInput) return;
+  if (!authStateBox) return;
   if (!authState.authenticated || !authState.user) {
-    authStateBox.innerHTML = '<div class="workspace-output muted">You are in guest mode. Sign in to sync account data, public presence, and profile settings.</div>';
-    nameInput.value = '';
-    emailInput.value = '';
+    authStateBox.innerHTML = '<div class="workspace-output muted">You are in guest mode. Sign in with Google to sync account data, public presence, and profile settings.</div>';
   } else {
     authStateBox.innerHTML = `<div class="workspace-output muted">Signed in as <strong>${escapeHtml(authState.user.display_name || authState.user.email)}</strong>. Your profile and workspace data sync through the backend.</div>`;
-    nameInput.value = authState.user.display_name || '';
-    emailInput.value = authState.user.email || '';
   }
   syncThemeGalleryActive();
+  renderGoogleButtons();
 }
-document.getElementById('settingsSaveBtn').addEventListener('click', async () => {
-  if (!authRequired('save your profile')) return;
-  try {
-    await apiJson(`${RENDER_URL}/auth/profile`, { method: 'POST', body: { display_name: document.getElementById('settingsDisplayName').value.trim(), theme: document.documentElement.dataset.theme || 'dark' } });
-    await refreshAuthState();
-    alert('Profile updated successfully.');
-  } catch (err) {
-    alert(err.message);
-  }
-});
 document.getElementById('settingsLogoutBtn').addEventListener('click', logoutUser);
+// ============================================================
+//  GOOGLE SIGN-IN (Google Identity Services + Supabase id_token grant)
+// ============================================================
+let googleClientId = '';
+let googleInitPromise = null;
+function b64urlToBytes(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  const bin = atob(str);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function sha256Hex(input) {
+  const enc = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function handleGoogleCredential(response) {
+  try {
+    await apiJson(`${RENDER_URL}/auth/google`, { method: 'POST', body: { credential: response.credential, nonce: window.__tscriptGoogleNonce || '' } });
+    closeAuthModal();
+    await refreshAuthState();
+  } catch (err) {
+    if (authStatusMsg) authStatusMsg.textContent = err.message || 'Google sign-in failed.';
+  }
+}
+async function initGoogleSignIn() {
+  if (googleInitPromise) return googleInitPromise;
+  googleInitPromise = (async () => {
+    try {
+      const cfg = await apiJson(`${RENDER_URL}/config`);
+      googleClientId = cfg.google_oauth_client_id || '';
+    } catch (_) { googleClientId = ''; }
+    if (!googleClientId || typeof window.google === 'undefined' || !window.google.accounts) return false;
+    const rawNonce = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
+    window.__tscriptGoogleNonce = rawNonce;
+    const hashedNonce = await sha256Hex(rawNonce);
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: handleGoogleCredential,
+      nonce: hashedNonce,
+      auto_select: false,
+      itp_support: true,
+    });
+    return true;
+  })();
+  return googleInitPromise;
+}
+async function renderGoogleButtons() {
+  if (authState.authenticated) return; // already signed in — nothing to render
+  const ready = await initGoogleSignIn();
+  if (!ready) return;
+  ['authGoogleMount', 'settingsGoogleBtnMount'].forEach(id => {
+    const mount = document.getElementById(id);
+    if (!mount) return;
+    mount.innerHTML = '';
+    window.google.accounts.id.renderButton(mount, { theme: 'outline', size: 'large', width: 280, text: 'signin_with' });
+  });
+}
+window.addEventListener('load', () => { renderGoogleButtons(); });
 // ============================================================
 //  YOUTUBE TRANSCRIPTION WORKSPACE
 // ============================================================
