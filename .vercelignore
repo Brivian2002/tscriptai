@@ -1,46 +1,69 @@
-# ============================================================
-#  EXCLUDE ALL PYTHON BACKEND FILES FROM VERCEL
-#  Vercel only serves the static index.html frontend.
-#  The Python backend runs on Render (see Dockerfile).
-# ============================================================
-main.py
-web_tools.py
-requirements.txt
-Dockerfile
-LIVE_VOICE_DOCUMENTATION.md
-Instruction.md
-Shift_SOP_Segmentation & Labeling.pdf
-Shift_SOP_Segmentation_Labeling.pdf
-
-# Python bytecode & caches
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
-.eggs/
 dist/
 build/
+*.egg
 
-# Data and runtime (never deploy databases)
-data/
-*.sqlite3
-*.db
-*.log
+# Virtual environments
+venv/
+.venv/
+env/
 
-# Development files
-.git/
-.gitignore
+# Environment files (contain secrets)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
+
+# Data and databases
+data/
+*.sqlite3
+*.db
+
+# Logs
+*.log
+logs/
 
 # OS files
-.DS_Store
 Thumbs.db
+.DS_Store
+
+# Docker
+.docker/
+
+# Temporary files
+/tmp/
+*.tmp
+*.bak
+
+# Uploaded / generated files (keep out of version control)
+uploads/
+downloads/
+*.mp3
+*.wav
+*.mp4
+
+# Coverage / test artifacts
+htmlcov/
+.coverage
+coverage.xml
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# mypy
+.mypy_cache/
