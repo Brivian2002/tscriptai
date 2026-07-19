@@ -174,6 +174,28 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
+@app.on_event("startup")
+async def check_pot_provider() -> None:
+    # Purely diagnostic: confirms in the Render logs whether the PO-token
+    # provider (started by start.sh) actually came up. If this logs a
+    # failure, yt-dlp's YouTube bot-detection workaround won't be active,
+    # but the app still runs fine otherwise — it just falls back to the
+    # captions-only / no-cookies-help behavior.
+    import asyncio
+
+    for attempt in range(5):
+        try:
+            # We don't know the provider's exact health-check path, so any
+            # response at all (even a 404) confirms the process is up and
+            # listening — that's all this check needs to establish.
+            resp = requests.get("http://127.0.0.1:4416/", timeout=2)
+            logging.info("PO-token provider reachable: status=%s", resp.status_code)
+            return
+        except Exception:
+            await asyncio.sleep(1)
+    logging.warning("PO-token provider NOT reachable at http://127.0.0.1:4416 after 5 attempts")
+
+
 RATE_BUCKETS: Dict[str, List[float]] = {}
 MEMORY_DB: Dict[str, List[Dict[str, Any]]] = {}
 SESSION_FALLBACK: Dict[str, Dict[str, Any]] = {}
@@ -916,7 +938,12 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 30,
-            "extractor_args": {"youtube": {"player_client": attempt["player_client"]}},
+            "extractor_args": {
+                "youtube": {"player_client": attempt["player_client"]},
+                # Explicit, rather than relying on the plugin's default, so this
+                # keeps working even if bgutil changes its default address.
+                "youtubepot-bgutilhttp": {"base_url": ["http://127.0.0.1:4416"]},
+            },
             "http_headers": {"User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14) gzip"},
         }
         if cookie_path:
