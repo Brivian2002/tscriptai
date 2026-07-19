@@ -17,6 +17,13 @@ import psycopg2
 import psycopg2.extras
 import requests
 import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import (
+    CouldNotRetrieveTranscript,
+    NoTranscriptFound,
+    TranscriptsDisabled,
+    VideoUnavailable,
+)
 from bs4 import BeautifulSoup
 from docx import Document
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
@@ -785,6 +792,77 @@ def is_youtube_url(url: str) -> bool:
     return bool(YOUTUBE_URL_PATTERN.search(url or ""))
 
 
+YOUTUBE_ID_PATTERN = re.compile(
+    r"(?:youtube\.com/(?:watch\?v=|shorts/|embed/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+
+
+def extract_youtube_video_id(url: str) -> Optional[str]:
+    match = YOUTUBE_ID_PATTERN.search(url or "")
+    return match.group(1) if match else None
+
+
+def fetch_youtube_oembed_meta(url: str) -> Dict[str, Any]:
+    # oEmbed is a lightweight, unauthenticated YouTube endpoint meant for embeds —
+    # it isn't gated by the same bot-detection wall as yt-dlp's player-response
+    # extraction, so it's a safe way to get title/author/thumbnail without
+    # touching the parts of YouTube that are currently blocking cloud IPs.
+    try:
+        resp = requests.get(
+            "https://www.youtube.com/oembed",
+            params={"url": url, "format": "json"},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "title": data.get("title") or "YouTube video",
+                "uploader": data.get("author_name") or "",
+                "thumbnail": data.get("thumbnail_url") or "",
+            }
+    except Exception:
+        pass
+    return {"title": "YouTube video", "uploader": "", "thumbnail": ""}
+
+
+def fetch_youtube_captions(video_id: str, language_hint: str = "") -> Optional[Tuple[str, List[Dict[str, Any]]]]:
+    """Try to pull YouTube's own caption track (manual or auto-generated) directly.
+
+    This avoids downloading audio and running it through Whisper entirely, and —
+    critically — does not go through yt-dlp's player-response extraction, which is
+    the part of YouTube currently subject to aggressive bot-detection on cloud IPs.
+    Returns None if no caption track is available so the caller can fall back to
+    the audio-download-and-transcribe path.
+    """
+    try:
+        api = YouTubeTranscriptApi()
+        languages = [language_hint] if language_hint and language_hint != "auto" else []
+        languages += ["en", "en-US", "en-GB"]
+        try:
+            fetched = api.fetch(video_id, languages=languages)
+        except NoTranscriptFound:
+            # Fall back to whatever transcript exists in any language rather than
+            # giving up — a non-English auto-caption is still far better and faster
+            # than a full audio download when one's available.
+            transcript_list = api.list(video_id)
+            first = next(iter(transcript_list))
+            fetched = first.fetch()
+        segments = [
+            {"start": snip.start, "end": snip.start + snip.duration, "text": snip.text}
+            for snip in fetched
+        ]
+        if not segments:
+            return None
+        logging.info("youtube captions found: video_id=%s language=%s segments=%d", video_id, fetched.language_code, len(segments))
+        return fetched.language_code or "auto", segments
+    except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable, CouldNotRetrieveTranscript) as exc:
+        logging.info("youtube captions unavailable: video_id=%s reason=%s", video_id, exc)
+        return None
+    except Exception as exc:  # noqa: BLE001 - any other failure just means fall back
+        logging.warning("youtube captions fetch failed unexpectedly: video_id=%s error=%s", video_id, exc)
+        return None
+
+
 def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, Any]]:
     if not is_youtube_url(url):
         raise http_error(400, "Please provide a valid YouTube video URL")
@@ -1530,9 +1608,28 @@ def youtube_transcribe(request: Request, response: Response, payload: Dict[str, 
     language_hint = trim_text(str(payload.get("language_hint") or ""), 12)
     if not url:
         raise http_error(400, "A YouTube URL is required")
-    with tempfile.TemporaryDirectory() as tempdir:
-        audio_path, meta = download_youtube_audio(url, Path(tempdir))
-        language, utterances = build_transcript_from_file(audio_path, language_hint)
+    if not is_youtube_url(url):
+        raise http_error(400, "Please provide a valid YouTube video URL")
+
+    video_id = extract_youtube_video_id(url)
+    caption_result = fetch_youtube_captions(video_id, language_hint) if video_id else None
+
+    if caption_result is not None:
+        language, segments = caption_result
+        utterances = normalise_utterances(segments)
+        for idx, item in enumerate(utterances, start=1):
+            item["index"] = idx
+        meta = fetch_youtube_oembed_meta(url)
+        meta["video_id"] = video_id
+        meta["webpage_url"] = url
+        meta["duration"] = segments[-1]["end"] if segments else 0
+    else:
+        # No caption track available (or the lookup failed) — fall back to
+        # downloading audio and transcribing it with Whisper via Groq.
+        with tempfile.TemporaryDirectory() as tempdir:
+            audio_path, meta = download_youtube_audio(url, Path(tempdir))
+            language, utterances = build_transcript_from_file(audio_path, language_hint)
+
     transcript_id = save_transcript(actor, meta.get("title") or "YouTube video", language, utterances, "")
     return json_ok({
         "transcript_id": transcript_id or "",
