@@ -116,6 +116,10 @@ class Settings:
     session_days: int = int(os.getenv("SESSION_TTL_DAYS", "14"))
     chunk_length_ms: int = int(os.getenv("TRANSCRIPTION_CHUNK_MS", str(8 * 60 * 1000)))
     youtube_max_duration_seconds: int = int(os.getenv("YOUTUBE_MAX_DURATION_SECONDS", str(3 * 60 * 60)))
+    # Prefer a Render "Secret File" (mounted on disk, no size limit) over a raw env var —
+    # cookies.txt exports are large enough to hit shell/env argument-size limits if passed
+    # as a normal environment variable value.
+    youtube_cookies_file: str = os.getenv("YOUTUBE_COOKIES_FILE", "/etc/secrets/youtube_cookies.txt")
     youtube_cookies_content: str = os.getenv("YOUTUBE_COOKIES", "").strip()
     web_search_enabled: bool = os.getenv("WEB_SEARCH_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
 
@@ -764,7 +768,10 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
         raise http_error(400, "Please provide a valid YouTube video URL")
     out_template = str(dest_dir / "%(id)s.%(ext)s")
     cookie_path = None
-    if settings.youtube_cookies_content:
+    secret_file_path = Path(settings.youtube_cookies_file)
+    if secret_file_path.exists() and secret_file_path.stat().st_size > 0:
+        cookie_path = secret_file_path
+    elif settings.youtube_cookies_content:
         cookie_path = dest_dir / "cookies.txt"
         cookie_path.write_text(settings.youtube_cookies_content, encoding="utf-8")
 
