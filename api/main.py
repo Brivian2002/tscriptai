@@ -791,13 +791,28 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
     out_template = str(dest_dir / "%(id)s.%(ext)s")
     cookie_path = None
     secret_file_path = Path(settings.youtube_cookies_file)
+    logging.info(
+        "youtube cookies check: path=%s exists=%s size=%s content_env_set=%s",
+        secret_file_path,
+        secret_file_path.exists(),
+        secret_file_path.stat().st_size if secret_file_path.exists() else 0,
+        bool(settings.youtube_cookies_content),
+    )
     if secret_file_path.exists() and secret_file_path.stat().st_size > 0:
         # Render's "Secret Files" are mounted read-only, but yt-dlp writes the
         # cookiejar back to the cookiefile path after every request. Pointing it
         # directly at the read-only secret path causes "Read-only file system"
         # errors, so copy the contents into the writable per-request temp dir first.
         cookie_path = dest_dir / "cookies.txt"
-        cookie_path.write_text(secret_file_path.read_text(encoding="utf-8"), encoding="utf-8")
+        raw_cookie_text = secret_file_path.read_text(encoding="utf-8")
+        cookie_path.write_text(raw_cookie_text, encoding="utf-8")
+        first_line = raw_cookie_text.strip().splitlines()[0] if raw_cookie_text.strip() else ""
+        logging.info(
+            "youtube cookies loaded: %d bytes, first line: %r, looks_like_netscape=%s",
+            len(raw_cookie_text),
+            first_line[:80],
+            first_line.startswith("# Netscape") or first_line.startswith("# HTTP Cookie"),
+        )
     elif settings.youtube_cookies_content:
         cookie_path = dest_dir / "cookies.txt"
         cookie_path.write_text(settings.youtube_cookies_content, encoding="utf-8")
@@ -832,15 +847,18 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
             last_error = None
+            logging.info("youtube attempt succeeded: player_client=%s cookies_used=%s", attempt["player_client"], bool(cookie_path))
             break
         except yt_dlp.utils.YoutubeDLError as exc:
             # Catches DownloadError, PostProcessingError, ExtractorError, etc. —
             # any yt-dlp failure, not just download failures — so a bad attempt
             # falls through to the next player-client combo instead of crashing
             # the whole request with an unhandled exception.
+            logging.warning("youtube attempt failed: player_client=%s cookies_used=%s error=%s", attempt["player_client"], bool(cookie_path), exc)
             last_error = exc
             continue
         except Exception as exc:  # noqa: BLE001 - last-resort guard, see below
+            logging.warning("youtube attempt failed (unexpected type): player_client=%s cookies_used=%s error=%s", attempt["player_client"], bool(cookie_path), exc)
             last_error = exc
             continue
 
