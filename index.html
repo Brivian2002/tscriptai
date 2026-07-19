@@ -2266,7 +2266,7 @@
   </div>
 </div>
 
-<script>window.TSCRIPT_API_URL = window.TSCRIPT_API_URL || 'https://tscriptai.onrender.com/api/v1';</script>
+<script>window.TSCRIPT_API_URL = window.TSCRIPT_API_URL || 'https://tscript.onrender.com/api/v1';</script>
 <script>
   
   function getAILogo(size) {
@@ -2307,7 +2307,7 @@
   // Vercel, a CDN, a file:// preview, etc. — we must point at the Render API
   // explicitly, or every fetch() 404s against the frontend's own origin instead
   // of reaching the backend.
-  const BACKEND_ORIGIN = 'https://tscript.onrender.com';
+  const BACKEND_ORIGIN = 'https://tscript.onrender.com/api/v1';
   function getStoredApiUrl() {
     try {
       return localStorage.getItem('tscript-api-url') || '';
@@ -6212,7 +6212,7 @@ async function initGoogleSignIn() {
   if (googleInitPromise) return googleInitPromise;
   googleInitPromise = (async () => {
     try {
-      const cfg = await apiJson(`${RENDER_URL}/config`);
+      const cfg = await apiJson(`${RENDER_URL}/public/config`);
       googleClientId = cfg.google_oauth_client_id || '';
     } catch (_) { googleClientId = ''; }
     if (!googleClientId || typeof window.google === 'undefined' || !window.google.accounts) return false;
