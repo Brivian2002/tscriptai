@@ -1451,71 +1451,7 @@
 @media (prefers-reduced-motion: reduce) {
   .home-hero, .home-feature-card, .home-more, .home-hero-dot { animation: none !important; }
 }
-
-/* ================= YOUTUBE TRANSCRIPTION WORKSPACE ================= */
-.yt-layout { display:flex; flex-direction:column; gap:18px; padding-bottom:24px; }
-.yt-hero { display:flex; flex-direction:column; gap:14px; }
-.yt-hero h1 { font-size:22px; display:flex; align-items:center; gap:10px; }
-.yt-url-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
-.yt-url-input { flex:1; min-width:240px; margin-top:0 !important; border-radius:999px !important; padding:13px 20px !important; }
-.yt-submit-btn { border-radius:999px; padding:12px 22px; font-weight:600; white-space:nowrap; }
-.yt-hint { font-size:12px; color: var(--text-muted); }
-
-.yt-state-card { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; padding:52px 24px; border-radius:22px; }
-.yt-state-icon { font-size:32px; color: var(--text-muted); opacity:0.7; }
-.yt-state-title { font-size:16px; font-weight:700; }
-.yt-state-desc { font-size:13px; color: var(--text-muted); max-width:420px; }
-.yt-state-error .yt-state-icon { color: var(--accent-red); opacity:1; }
-.yt-spinner {
-  width:34px; height:34px; border-radius:50%; border:3px solid var(--border);
-  border-top-color: var(--accent, var(--accent-cyan)); animation: yt-spin 0.8s linear infinite;
-}
-@keyframes yt-spin { to { transform: rotate(360deg); } }
-
-.yt-result-panel { display:flex; flex-direction:column; gap:18px; animation: home-fade-up 0.4s ease both; }
-.yt-video-card { display:flex; gap:16px; align-items:center; border-radius:20px; }
-.yt-video-thumb { width:140px; height:79px; object-fit:cover; border-radius:14px; background: var(--bg-elevated); flex-shrink:0; }
-.yt-video-meta { display:flex; flex-direction:column; gap:6px; min-width:0; }
-.yt-video-title { font-weight:700; font-size:15px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
-.yt-video-sub { font-size:12.5px; color: var(--text-muted); }
-
-.yt-editor-card { border-radius:22px; display:flex; flex-direction:column; gap:12px; }
-.yt-toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.yt-tool-btn {
-  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
-  background: var(--bg-primary); border:1px solid var(--border); color: var(--text-main);
-  border-radius:999px; padding:8px 14px; cursor:pointer; font-family:inherit;
-  transition: border-color 0.15s ease, transform 0.15s ease;
-}
-.yt-tool-btn:hover:not(:disabled) { border-color: var(--accent, var(--accent-cyan)); transform: translateY(-1px); }
-.yt-tool-btn:disabled { opacity:0.6; cursor:progress; }
-.yt-tool-btn-ghost { background:transparent; padding:8px 12px; }
-.yt-toolbar-spacer { flex:1; }
-.yt-editor-textarea {
-  width:100%; min-height:320px; resize:vertical; background: var(--bg-primary);
-  border:1px solid var(--border); border-radius:18px; padding:18px 20px; color: var(--text-main);
-  font: 15px/1.7 'Inter', sans-serif; outline:none;
-}
-.yt-editor-textarea:focus { border-color: var(--accent, var(--accent-cyan)); }
-.yt-editor-footer { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-.yt-editor-actions { display:flex; gap:8px; flex-wrap:wrap; }
-
-.yt-segments-card { border-radius:22px; }
-.yt-segments-list { display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; margin-top:10px; }
-.yt-segment-row { display:flex; gap:14px; padding:10px 12px; border-radius:12px; background: var(--bg-primary); font-size:13px; }
-.yt-segment-time { color: var(--accent, var(--accent-cyan)); font-weight:700; flex-shrink:0; font-variant-numeric: tabular-nums; }
-.yt-segment-text { color: var(--text-main); line-height:1.5; }
-
-@media (max-width: 640px) {
-  .yt-video-card { flex-direction:column; align-items:flex-start; }
-  .yt-video-thumb { width:100%; height:auto; aspect-ratio:16/9; }
-}
-
-</style>
-</head>
-<body>
-<div class="app-shell" id="appShell">
-
+ 
   <!-- ============ SIDEBAR ============ -->
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <aside class="sidebar" id="sidebar">
