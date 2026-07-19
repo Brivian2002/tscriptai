@@ -115,6 +115,7 @@ class Settings:
     session_days: int = int(os.getenv("SESSION_TTL_DAYS", "14"))
     chunk_length_ms: int = int(os.getenv("TRANSCRIPTION_CHUNK_MS", str(8 * 60 * 1000)))
     youtube_max_duration_seconds: int = int(os.getenv("YOUTUBE_MAX_DURATION_SECONDS", str(3 * 60 * 60)))
+    youtube_cookies_content: str = os.getenv("YOUTUBE_COOKIES", "").strip()
     web_search_enabled: bool = os.getenv("WEB_SEARCH_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
 
     @property
@@ -769,11 +770,28 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
         "quiet": True,
         "no_warnings": True,
         "socket_timeout": 30,
+        # Cloud/datacenter IPs (Render, AWS, etc.) are frequently challenged by YouTube's
+        # "sign in to confirm you're not a bot" check on the default web client. The
+        # android/ios embedded clients are challenged far less often, so try those first.
+        "extractor_args": {"youtube": {"player_client": ["android", "ios", "web"]}},
+        "http_headers": {"User-Agent": "com.google.android.youtube/19.29.37 (Linux; U; Android 14) gzip"},
     }
+    if settings.youtube_cookies_content:
+        cookie_path = dest_dir / "cookies.txt"
+        cookie_path.write_text(settings.youtube_cookies_content, encoding="utf-8")
+        ydl_opts["cookiefile"] = str(cookie_path)
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except yt_dlp.utils.DownloadError as exc:
+        message = str(exc)
+        if "sign in" in message.lower() or "not a bot" in message.lower():
+            raise http_error(
+                400,
+                "YouTube is blocking this server's requests as a bot for that video. "
+                "Set the YOUTUBE_COOKIES environment variable (see env.txt) to fix this for all videos, "
+                "or try a different video in the meantime.",
+            )
         raise http_error(400, f"Could not download that YouTube video: {exc}")
     duration = float(info.get("duration") or 0)
     if duration and duration > settings.youtube_max_duration_seconds:
