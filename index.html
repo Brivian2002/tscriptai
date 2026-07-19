@@ -2307,7 +2307,7 @@
   // Vercel, a CDN, a file:// preview, etc. — we must point at the Render API
   // explicitly, or every fetch() 404s against the frontend's own origin instead
   // of reaching the backend.
-  const BACKEND_ORIGIN = 'https://tscriptai-1.onrender.com';
+  const BACKEND_ORIGIN = 'https://tscript.onrender.com';
   function getStoredApiUrl() {
     try {
       return localStorage.getItem('tscript-api-url') || '';
