@@ -191,7 +191,7 @@ FILLER_RE = re.compile(r"\b(?:um+|uh+|er+|ah+|like|you know|sort of|kind of)\b",
 
 DEFAULT_ALLOWED_ORIGINS = [
     "https://tscript-ai.vercel.app",
-    "https://atc-transcriber.onrender.com",
+    "https://tscriptai.onrender.com",
     "http://localhost:3000",
     "http://localhost:5000",
     "http://localhost:8000",
