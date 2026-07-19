@@ -20,6 +20,7 @@ import yt_dlp
 from bs4 import BeautifulSoup
 from docx import Document
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from openpyxl import load_workbook
@@ -1103,7 +1104,9 @@ def serialise_user(user: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 
 def json_ok(payload: Dict[str, Any], response: Optional[Response] = None) -> JSONResponse:
-    result = JSONResponse(payload)
+    # jsonable_encoder converts datetimes, UUIDs, Decimals, etc. into JSON-safe values.
+    # Every endpoint returns through here, so this fixes/prevents that class of bug everywhere at once.
+    result = JSONResponse(jsonable_encoder(payload))
     set_security_headers(result)
     if response:
         for key, value in response.headers.items():
