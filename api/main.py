@@ -151,6 +151,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Without this, any exception that isn't raised via http_error()/HTTPException
+    # bubbles past CORSMiddleware and Starlette returns a bare 500 with no CORS
+    # headers at all. The browser then reports it as a CORS failure, hiding the
+    # real error. Catching it here and returning a normal JSONResponse means it
+    # still passes back out through CORSMiddleware and gets proper headers, so
+    # the frontend sees the actual error message instead of a fake CORS block.
+    logging.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": str(exc)},
+    )
+
+
 RATE_BUCKETS: Dict[str, List[float]] = {}
 MEMORY_DB: Dict[str, List[Dict[str, Any]]] = {}
 SESSION_FALLBACK: Dict[str, Dict[str, Any]] = {}
@@ -812,7 +828,14 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
                 info = ydl.extract_info(url, download=True)
             last_error = None
             break
-        except yt_dlp.utils.DownloadError as exc:
+        except yt_dlp.utils.YoutubeDLError as exc:
+            # Catches DownloadError, PostProcessingError, ExtractorError, etc. —
+            # any yt-dlp failure, not just download failures — so a bad attempt
+            # falls through to the next player-client combo instead of crashing
+            # the whole request with an unhandled exception.
+            last_error = exc
+            continue
+        except Exception as exc:  # noqa: BLE001 - last-resort guard, see below
             last_error = exc
             continue
 
