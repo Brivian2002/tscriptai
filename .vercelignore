@@ -3,67 +3,45 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.Python
+.venv/
+venv/
+env/
+ENV/
 *.egg-info/
 dist/
 build/
-*.egg
+.pytest_cache/
+.mypy_cache/
 
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Environment files (contain secrets)
+# Environment / secrets
 .env
-.env.local
-.env.*.local
-.env.production
-.env.development
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+firebase-adminsdk*.json
+service-account*.json
 
-# IDE
-.vscode/
+# Node / Vercel
+node_modules/
+.vercel/
+.next/
+out/
+
+# Editors / OS
 .idea/
+.vscode/
+.DS_Store
+Thumbs.db
 *.swp
 *.swo
-*~
-.DS_Store
 
-# Data and databases
-data/
-*.sqlite3
-*.db
-
-# Logs
+# Logs / temp
 *.log
 logs/
-
-# OS files
-Thumbs.db
-.DS_Store
-
-# Docker
-.docker/
-
-# Temporary files
-/tmp/
+tmp/
+temp/
 *.tmp
-*.bak
-
-# Uploaded / generated files (keep out of version control)
-uploads/
-downloads/
-*.mp3
-*.wav
-*.mp4
-
-# Coverage / test artifacts
-htmlcov/
-.coverage
-coverage.xml
-.pytest_cache/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# mypy
-.mypy_cache/
+.cache/
