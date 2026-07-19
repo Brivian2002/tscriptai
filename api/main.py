@@ -792,7 +792,12 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Tuple[Path, Dict[str, An
     cookie_path = None
     secret_file_path = Path(settings.youtube_cookies_file)
     if secret_file_path.exists() and secret_file_path.stat().st_size > 0:
-        cookie_path = secret_file_path
+        # Render's "Secret Files" are mounted read-only, but yt-dlp writes the
+        # cookiejar back to the cookiefile path after every request. Pointing it
+        # directly at the read-only secret path causes "Read-only file system"
+        # errors, so copy the contents into the writable per-request temp dir first.
+        cookie_path = dest_dir / "cookies.txt"
+        cookie_path.write_text(secret_file_path.read_text(encoding="utf-8"), encoding="utf-8")
     elif settings.youtube_cookies_content:
         cookie_path = dest_dir / "cookies.txt"
         cookie_path.write_text(settings.youtube_cookies_content, encoding="utf-8")
